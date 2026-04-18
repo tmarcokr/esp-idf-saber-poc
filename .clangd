@@ -1,0 +1,18 @@
+CompileFlags:
+  CompilationDatabase: "build"
+
+  Remove: 
+    - "-fno-shrink-wrap"
+    - "-fno-shrink-warp"
+    - "-fstrict-volatile-bitfields"
+    - "-fno-tree-switch-conversion"
+    - "-march=*"
+    - "-mabi=*"
+    - "-Wno-frame-address"
+    - "--param=*"
+    - "-fno-jump-tables"
+    - "-fno-optimize-sibling-calls"
+    
+
+Index:
+  Background: Build

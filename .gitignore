@@ -7,6 +7,7 @@ dependencies.lock
 
 # IDE specific
 # .vscode/
+.clangd/
 
 # Python specific
 __pycache__/
