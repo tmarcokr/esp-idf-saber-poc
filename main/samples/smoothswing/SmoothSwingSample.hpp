@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ISample.hpp"
 #include "AudioEngine.hpp"
+#include "Engine.hpp"
 #include "Mpu6050.hpp"
 #include "sd_card.hpp"
 
@@ -34,25 +34,27 @@ using SSSemaphorePtr = std::unique_ptr<QueueDefinition, SmoothSwingSemaphoreDele
  * Uses hardware interrupts to grab motion data, calculates angular velocity,
  * and dynamically maps volumes to looping audio.
  */
-class SmoothSwingSample : public ISample {
+class SmoothSwingSample {
 public:
     /**
      * @brief Construct a new Smooth Swing Sample.
      * @param sd_config SD card configuration.
      * @param audio_config Audio engine I2S configuration.
+     * @param led_engine Reference to the SmartLed engine for reactive effects.
      * @param mpu_sda MPU SDA pin.
      * @param mpu_scl MPU SCL pin.
      * @param mpu_int MPU INT pin.
      */
     SmoothSwingSample(const Wrappers::SdCard::Config& sd_config,
                       const Wrappers::Audio::AudioEngine::Config& audio_config,
+                      Wrappers::SmartLed::Engine& led_engine,
                       gpio_num_t mpu_sda, gpio_num_t mpu_scl, gpio_num_t mpu_int);
 
     /**
      * @brief Initialize SD card, Audio Engine, and MPU driver.
      * @return esp_err_t ESP_OK on success.
      */
-    esp_err_t setup() override;
+    esp_err_t setup();
 
     /**
      * @brief Execute the SmoothSwing motion-processing loop (blocking).
@@ -60,7 +62,7 @@ public:
      * Runs continuously but only processes sensor data when active.
      * Use startAudio() / stopAudio() to control audio lifecycle externally.
      */
-    void run() override;
+    void run();
 
     /**
      * @brief Start saber audio: poweron.wav + looping hum and swing channels.
@@ -75,6 +77,11 @@ public:
     void setActive(bool active);
     [[nodiscard]] bool isActive() const;
 
+    /**
+     * @brief Access the internal audio engine.
+     */
+    Wrappers::Audio::AudioEngine& getAudioEngine() { return *m_engine; }
+
 private:
     std::unique_ptr<Wrappers::SdCard> m_sd;
     std::unique_ptr<Wrappers::Audio::AudioEngine> m_engine;
@@ -83,6 +90,7 @@ private:
     Wrappers::SdCard::Config m_sd_config;
     Wrappers::Audio::AudioEngine::Config m_audio_config;
     gpio_num_t m_mpu_sda, m_mpu_scl, m_mpu_int;
+    Wrappers::SmartLed::Engine& m_led_engine;
 
     SSSemaphorePtr m_semaphore;
 
@@ -96,6 +104,7 @@ private:
     // SmoothSwing state
     float m_virtual_position = 0.0f; 
     uint32_t m_last_accent_time_ms = 0;
+    uint32_t m_last_spark_time_ms = 0;
 
     std::atomic<bool> m_active{false};
 

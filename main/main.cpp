@@ -1,69 +1,33 @@
 #include "BladeIgnite.hpp"
 #include "GpioButton.hpp"
+#include "RgbLed.hpp"
+#include "SaberController.hpp"
 #include "SmartLed.hpp"
 #include "SmoothSwingSample.hpp"
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h" // IWYU pragma: keep
+#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <atomic>
 #include <memory>
 
 static constexpr const char* TAG = "SaberPoC";
 
 static constexpr gpio_num_t BOOT_BUTTON_GPIO = GPIO_NUM_9;
 static constexpr gpio_num_t LED_STRIP_GPIO   = GPIO_NUM_0;
+static constexpr gpio_num_t INTERNAL_LED_GPIO = GPIO_NUM_8;
 static constexpr uint16_t   NUM_BLADE_LEDS   = 5;
 
-static std::atomic<bool> s_saber_on{false};
-static TaskHandle_t s_controller_task = nullptr;
-
-struct SaberContext {
-    Espressif::App::BladeIgnite* blade;
-    Espressif::App::SmoothSwingSample* swing;
-};
-
-/**
- * @brief Orchestrates ignition/retraction transitions.
- *
- * Waits for task notifications from the button callback,
- * ignoring presses during active animations.
- */
-static void saber_controller_task(void* pvParameters) {
-    auto* ctx = static_cast<SaberContext*>(pvParameters);
-
-    while (true) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-        auto state = ctx->blade->state();
-
-        if (state == Espressif::App::BladeIgnite::State::Igniting ||
-            state == Espressif::App::BladeIgnite::State::Retracting) {
-            continue;
-        }
-
-        if (!s_saber_on.load()) {
-            ESP_LOGI(TAG, "IGNITE");
-            ctx->blade->ignite();
-            ctx->swing->startAudio();
-            s_saber_on.store(true);
-        } else {
-            ESP_LOGI(TAG, "RETRACT");
-            ctx->blade->retract();
-            ctx->swing->stopAudio();
-            s_saber_on.store(false);
-        }
-    }
-}
-
-static void smoothswing_task(void* pvParameters) {
-    auto* sample = static_cast<Espressif::App::SmoothSwingSample*>(pvParameters);
-    sample->run();
-    vTaskDelete(nullptr);
-}
-
 extern "C" void app_main(void) {
+    // ── Internal Status LED ─────────────────────────────────────────────
+    static Espressif::Wrappers::RgbLed status_led(INTERNAL_LED_GPIO);
+    if (status_led.init() != ESP_OK) {
+        ESP_LOGE(TAG, "Internal LED init failed!");
+    }
+
     ESP_LOGI(TAG, "Saber PoC — electrical stabilization (1s)...");
     vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    // Signal ready with Green color
+    ESP_ERROR_CHECK(status_led.setColor({0, 255, 0})); // Green
 
     // ── SD Card ─────────────────────────────────────────────────────────
     Espressif::Wrappers::SdCard::Config sd_cfg = {
@@ -100,34 +64,26 @@ extern "C" void app_main(void) {
 
     // ── SmoothSwing ─────────────────────────────────────────────────────
     static Espressif::App::SmoothSwingSample ss_sample(
-        sd_cfg, audio_cfg, GPIO_NUM_22, GPIO_NUM_23, GPIO_NUM_21);
+        sd_cfg, audio_cfg, led_engine, GPIO_NUM_22, GPIO_NUM_23, GPIO_NUM_21);
 
-    esp_err_t ss_ret = ss_sample.setup();
-    if (ss_ret != ESP_OK) {
-        ESP_LOGE(TAG, "SmoothSwing setup failed: %s", esp_err_to_name(ss_ret));
+    if (ss_sample.setup() != ESP_OK) {
+        ESP_LOGE(TAG, "SmoothSwing setup failed!");
     }
 
     // ── Controller ──────────────────────────────────────────────────────
-    static SaberContext ctx = {
-        .blade = blade_ptr,
-        .swing = &ss_sample
-    };
-
-    xTaskCreate(saber_controller_task, "saber_ctrl", 8192, &ctx, 5, &s_controller_task);
-
-    if (ss_ret == ESP_OK) {
-        xTaskCreate(smoothswing_task, "ss_task", 8192, &ss_sample, 5, nullptr);
-    } else {
-        ESP_LOGW(TAG, "SmoothSwing task skipped due to setup failure.");
-    }
+    static Espressif::App::SaberController controller(
+        *blade_ptr, ss_sample, ss_sample.getAudioEngine(), led_engine);
+    ESP_ERROR_CHECK(controller.begin());
 
     // ── BOOT Button ─────────────────────────────────────────────────────
     static Espressif::Wrappers::GpioButton boot_btn(BOOT_BUTTON_GPIO, true);
 
     boot_btn.onEvent(Espressif::Wrappers::ButtonEvent::Click, []() {
-        if (s_controller_task) {
-            xTaskNotifyGive(s_controller_task);
-        }
+        controller.trigger();
+    });
+
+    boot_btn.onLongPress(3000, []() {
+        controller.requestRetract();
     });
 
     if (boot_btn.init() != ESP_OK) {

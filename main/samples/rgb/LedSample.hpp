@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ISample.hpp"
 #include "RgbLed.hpp"
 #include <memory>
 
@@ -9,7 +8,7 @@ namespace Espressif::App {
 /**
  * @brief LED Sample implementing the color fading loop.
  */
-class LedSample : public ISample {
+class LedSample {
 public:
     /**
      * @brief Construct a new Led Sample.
@@ -21,12 +20,12 @@ public:
      * @brief Initialize the RGB LED driver.
      * @return esp_err_t ESP_OK on success.
      */
-    esp_err_t setup() override;
+    esp_err_t setup();
     
     /**
      * @brief Start the infinite fading loop.
      */
-    void run() override;
+    void run();
 
 private:
     std::unique_ptr<Wrappers::RgbLed> _led;
