@@ -12,16 +12,58 @@ This repository leverages FreeRTOS to handle simultaneous computational loads: p
 
 ---
 
-## 🏗️ Software Architecture & Synchronization
+## 🏗️ Software Design & Layers
 
-This PoC acts as a central orchestrator that glues together battle-tested components from external repositories. It maintains strict decoupling between *hardware drivers* and *application logic*:
+The project follows a modular architecture using **Dependency Injection** and **RAII** patterns. The system is divided into clear functional layers to ensure stability and low-latency response:
 
-- **`esp-idf-template`**: Provided the robust foundational structure (CMake configuration, `.gitignore`, and the `.agents/` automated CI/CD workflows driven by AI logic).
-- **`esp-idf-components`**: Supplies the deeply abstracted, immutable hardware drivers.
-  - `AudioEngine`: I2S polyphonic channel mixer.
-  - `SmartLed`: Non-blocking, interrupt-safe WS2812B animation engine.
-  - `Mpu6050`: I2C DMA-enabled data fusion logic.
-- **Synchronization Method**: The core components are synchronized and merged directly into the `components/` tree to ensure architectural immutability. The `main/` orchestrator (`main.cpp`) acts as the conductor, mapping hardware pins, routing motion data to the `SmoothSwingSample` algorithm, and coordinating `BladeIgnite` transitions.
+```text
+       ┌─────────────────────────────────────────────────────────┐
+       │                   app_main (main.cpp)                   │
+       │    (Composition Root & Hardware Configuration)          │
+       └──────────────┬─────────────────────────────┬────────────┘
+                      │                             │
+       ┌──────────────▼──────────────┐      ┌───────▼────────────┐
+       │       SaberController       │      │   Internal LED     │
+       │     (State Orchestrator)    │      │ (Status Indicator)  │
+       └──────────────┬──────────────┘      └────────────────────┘
+                      │
+      ┌───────────────┼─────────────────────────────┐
+      │               │                             │
+┌─────▼───────────────▼──────┐      ┌───────────────▼────────────┐
+│      SmoothSwingSample     │      │      SmartLed::Engine      │
+│  (Motion & Audio Logic)    │      │     (Effect Scheduler)     │
+└─────┬───────────────┬──────┘      └───────────────┬────────────┘
+      │               │                             │
+┌─────▼────────┐┌─────▼────────┐      ┌─────────────┼────────────┐
+│ AudioEngine  ││   MPU6050    │      │ BaseEffect  │  Overlays  │
+│ (WAV Mixer)  ││ (DMP Sensor) │      │(Ignite/Ret) │(Spark/Blas)│
+└─────┬────────┘└─────┬────────┘      └─────────────┴────────────┘
+      │               │                             │
+      └───────┬───────┴─────────────────────────────┘
+              │
+    ┌─────────▼────────────────────────────────────────────┐
+    │                Hardware Drivers (HAL)                │
+    │      (I2S, I2C, RMT/NeoPixel, SDMMC, GPIO)           │
+    └──────────────────────────────────────────────────────┘
+```
+
+### Core Architecture Components
+- **SaberController**: The high-level state machine. It handles user input (button clicks/long-press) and coordinates transitions between the audio and LED layers.
+- **SmoothSwingSample**: Contains the physics engine. It processes IMU data (Angular Velocity & Linear Acceleration) to calculate real-time audio volumes and trigger motion-based LED sparks.
+- **SmartLed Engine**: A background task that renders multiple effect layers (Base + Overlays) onto the physical LED strip using alpha blending.
+- **AudioEngine**: A polyphonic mixer that manages multiple independent audio channels (Hum, Swings, Blaster, etc.) with real-time volume control.
+
+---
+
+## 🎨 Lightsaber Effects
+
+The blade visuals are driven by a composable effect system, allowing for complex animations without blocking the main logic.
+
+| Effect | Type | Description | Trigger |
+| :--- | :--- | :--- | :--- |
+| **BladeIgnite** | Base | Handles the physical extension/retraction of the light and the steady-state pulse/gradient. | Power On / Off |
+| **BladeSpark** | Overlay | Adds random white high-intensity sparkles to the blade. | High-speed motion (Swing) |
+| **BlasterImpact** | Overlay | A full-blade red flash that fades out smoothly, simulating a blaster bolt deflection. | Single Click (when ON) |
 
 ---
 
@@ -31,13 +73,12 @@ The firmware is currently configured for an **ESP32-C6** developer board. Below 
 
 | 🔌 Component | Protocol | Pin Mapping (ESP32-C6) | Description |
 | :--- | :--- | :--- | :--- |
-| **WS2812B LEDs** | RMT (1-Wire) | `GPIO 0` | Renders dynamic blade animations (ignition, pulsing, hum variations). |
-| **Micro SD Card** | SPI | MISO: `4`, MOSI: `11`, SCK: `7`, CS: `10` | Hosts `.WAV` audio files for hums, swings, and lockups. |
-| **MAX98357A** | I2S | BCLK: `18`, WS: `19`, DOUT: `20`, SD: `1` | High-fidelity Class-D Amplifier forcing raw digital-to-analog audio output to the speaker. |
-| **MPU-6050 IMU** | I2C | SDA: `22`, SCL: `23`, INT: `21` | Advanced 6-axis gyroscope and accelerometer with a built-in Digital Motion Processor (DMP). |
-| **BOOT Button** | GPIO | `GPIO 9` | Serves as the primary physical interaction point to trigger the `Ignite()` / `Retract()` state machine. |
-
-> **Tech Note on the MAX98357A**: The amplifier operates on pure I2S logic. The `SD_MODE` pin acts as both shutdown and channel select (Left, Right, or Mono Mix). In this PoC, it receives a steady I2S pump via the FreeRTOS audio task.
+| **Internal LED** | RMT | `GPIO 8` | Signals system readiness (Green) after stabilization. |
+| **WS2812B Blade** | RMT | `GPIO 0` | Renders dynamic blade animations. |
+| **Micro SD Card** | SPI | MISO: `4`, MOSI: `11`, SCK: `7`, CS: `10` | Hosts `.WAV` audio files. |
+| **MAX98357A** | I2S | BCLK: `18`, WS: `19`, DOUT: `20`, SD: `1` | High-fidelity Class-D Amplifier. |
+| **MPU-6050 IMU** | I2C | SDA: `22`, SCL: `23`, INT: `21` | Advanced 6-axis gyroscope with DMP. |
+| **BOOT Button** | GPIO | `GPIO 9` | Primary interaction point. |
 
 ---
 
@@ -50,22 +91,21 @@ source ~/esp/esp-idf/export.sh
 ```
 
 ### 2. Prepare the SD Card
-The project expects the root of the connected SD Card to contain the SmoothSwing audio asset structure. Place your raw `16-bit 44.1kHz` `.WAV` files here:
-- `/sdcard/saber/poweron.wav`
-- `/sdcard/saber/poweroff.wav`
+Place your raw `16-bit 44.1kHz` `.WAV` files in the following structure:
+- `/sdcard/saber/poweron.wav` / `poweroff.wav`
 - `/sdcard/saber/hum.wav`
 - `/sdcard/saber/swingL.wav` / `swingH.wav`
+- `/sdcard/saber/blaster.wav`
 
 ### 3. Build & Flash
-Set the physical target, compile, output to the board, and attach the real-time serial monitor:
 ```bash
-# Set target architecture
 idf.py set-target esp32c6
-
-# Compile and deploy
 idf.py build flash monitor
 ```
 
 ### 4. Interactive Testing
-Once the serial monitor shows the stabilization log, press the **BOOT Button (GPIO 9)**.
-You will hear the `poweron.wav` paired with the physical WS2812B blade extension animation, immediately followed by the responsive `hum` reacting to the MPU-6050 tilt and thrust calculations.
+- **Stabilization**: Wait for the internal LED to turn **Green**.
+- **Ignition**: Short press the **BOOT Button**.
+- **Blaster Deflection**: Short press the button while the blade is **ON**.
+- **Retraction**: Long press the button for **3 seconds**.
+- **SmoothSwing**: Move or rotate the hilt to hear the dynamic hum changes and see reactive sparkles.
