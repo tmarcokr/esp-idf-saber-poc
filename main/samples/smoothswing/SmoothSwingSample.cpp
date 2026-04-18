@@ -1,4 +1,5 @@
 #include "SmoothSwingSample.hpp"
+#include "BladeSpark.hpp"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include <algorithm>
@@ -44,9 +45,10 @@ static constexpr uint16_t MAX_SWING_VOL_MTRX = 16384;
 SmoothSwingSample::SmoothSwingSample(
     const Wrappers::SdCard::Config &sd_config,
     const Wrappers::Audio::AudioEngine::Config &audio_config,
+    Wrappers::SmartLed::Engine &led_engine,
     gpio_num_t mpu_sda, gpio_num_t mpu_scl, gpio_num_t mpu_int)
     : m_sd_config(sd_config), m_audio_config(audio_config), m_mpu_sda(mpu_sda),
-      m_mpu_scl(mpu_scl), m_mpu_int(mpu_int) {}
+      m_mpu_scl(mpu_scl), m_mpu_int(mpu_int), m_led_engine(led_engine) {}
 
 void IRAM_ATTR SmoothSwingSample::isrHandler(void *arg) {
   auto *sem = static_cast<QueueHandle_t>(arg);
@@ -232,6 +234,15 @@ void SmoothSwingSample::processMotion(float swing_speed_dps, float lin_accel_g,
 
   // 4. Apply Power Curve (Sharpness) -> determines ultimate volume
   float swing_volume_factor = std::pow(base_strength, SWING_SHARPNESS);
+
+  // 4b. Trigger Reactive LED Sparkles
+  if (swing_volume_factor > 0.4f) {
+      if ((current_time_ms - m_last_spark_time_ms) > 100) {
+          uint8_t spark_intensity = static_cast<uint8_t>(swing_volume_factor * 255);
+          m_led_engine.pushOverlay(std::make_unique<BladeSpark>(spark_intensity, 150));
+          m_last_spark_time_ms = current_time_ms;
+      }
+  }
 
   // 5. Update phase position
   m_virtual_position += (swing_speed_dps * delta_time_s);
