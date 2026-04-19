@@ -1,5 +1,6 @@
 #include "SmoothSwingSample.hpp"
 #include "BladeSpark.hpp"
+#include "BladeClash.hpp"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include <algorithm>
@@ -36,6 +37,10 @@ static constexpr uint32_t ACCENT_COOLDOWN_MS =
 // Weight: how many "virtual degrees per second" every 1g of acceleration is
 // worth.
 static constexpr float LIN_ACCEL_WEIGHT = 400.0f; // 0.5g ≈ 200 virtual DPS
+
+// Clash detection
+static constexpr float CLASH_ACCEL_THRESHOLD = 2.0f; // g's
+static constexpr uint32_t CLASH_COOLDOWN_MS = 600; // ms
 
 // Volume levels: hum lowered so swings can be heard clearly.
 static constexpr uint16_t MAX_VOL_14BIT = 16384;
@@ -207,6 +212,16 @@ void SmoothSwingSample::processMotion(float swing_speed_dps, float lin_accel_g,
   }
 
   uint32_t current_time_ms = esp_timer_get_time() / 1000;
+
+  // 0. Clash Check (Linear Acceleration)
+  if (lin_accel_g > CLASH_ACCEL_THRESHOLD) {
+    if ((current_time_ms - m_last_clash_time_ms) > CLASH_COOLDOWN_MS) {
+      ESP_LOGI(TAG, "Clash Triggered! Accel: %.2fg", lin_accel_g);
+      m_engine->play("/sdcard/saber/clash1.wav", false, MAX_VOL_14BIT);
+      m_led_engine.pushOverlay(std::make_unique<BladeClash>(300));
+      m_last_clash_time_ms = current_time_ms;
+    }
+  }
 
   // 1. Accent Swings Check
   if (swing_speed_dps > ACCENT_THRESHOLD) {

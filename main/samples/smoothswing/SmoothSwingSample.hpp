@@ -105,6 +105,7 @@ private:
     float m_virtual_position = 0.0f; 
     uint32_t m_last_accent_time_ms = 0;
     uint32_t m_last_spark_time_ms = 0;
+    uint32_t m_last_clash_time_ms = 0;
 
     std::atomic<bool> m_active{false};
 
