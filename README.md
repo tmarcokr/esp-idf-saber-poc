@@ -64,6 +64,7 @@ The blade visuals are driven by a composable effect system, allowing for complex
 | **BladeIgnite** | Base | Handles the physical extension/retraction of the light and the steady-state pulse/gradient. | Power On / Off |
 | **BladeSpark** | Overlay | Adds random white high-intensity sparkles to the blade. | High-speed motion (Swing) |
 | **BlasterImpact** | Overlay | A full-blade red flash that fades out smoothly, simulating a blaster bolt deflection. | Single Click (when ON) |
+| **BladeClash** | Overlay | An intense white/yellow burst at the center of the blade, fading towards the edges. | Physical Impact / Hit |
 
 ---
 
@@ -96,6 +97,7 @@ Place your raw `16-bit 44.1kHz` `.WAV` files in the following structure:
 - `/sdcard/saber/hum.wav`
 - `/sdcard/saber/swingL.wav` / `swingH.wav`
 - `/sdcard/saber/blaster.wav`
+- `/sdcard/saber/clash1.wav`
 
 ### 3. Build & Flash
 ```bash
@@ -107,5 +109,6 @@ idf.py build flash monitor
 - **Stabilization**: Wait for the internal LED to turn **Green**.
 - **Ignition**: Short press the **BOOT Button**.
 - **Blaster Deflection**: Short press the button while the blade is **ON**.
+- **Clash / Hit**: Strike the hilt or stop it abruptly to trigger a clash (requires >2.0g acceleration).
 - **Retraction**: Long press the button for **3 seconds**.
 - **SmoothSwing**: Move or rotate the hilt to hear the dynamic hum changes and see reactive sparkles.
