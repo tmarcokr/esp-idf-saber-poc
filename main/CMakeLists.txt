@@ -6,6 +6,7 @@ idf_component_register(
          "effects/BladeSpark.cpp"
          "effects/BlasterImpact.cpp"
          "effects/BladeClash.cpp"
+         "effects/BladeDrag.cpp"
     INCLUDE_DIRS "." 
                  "samples" 
                  "samples/smoothswing"

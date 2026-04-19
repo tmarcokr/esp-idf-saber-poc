@@ -86,6 +86,14 @@ extern "C" void app_main(void) {
         controller.requestRetract();
     });
 
+    boot_btn.onLongPress(500, []() {
+        controller.requestLongPressSmall();
+    });
+
+    boot_btn.onEvent(Espressif::Wrappers::ButtonEvent::PressUp, []() {
+        controller.releaseButton();
+    });
+
     if (boot_btn.init() != ESP_OK) {
         ESP_LOGE(TAG, "BOOT button init failed!");
     }
